@@ -1,0 +1,3 @@
+[submodule "thirdparty/cyclonedds-0.10.5-prebuilt"]
+	path = thirdparty/cyclonedds-0.10.5-prebuilt
+	url = https://github.com/work-thirdparty/cyclonedds-0.10.5-prebuilt.git
