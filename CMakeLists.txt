@@ -1,14 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(work_cyclonedds_demos VERSION 0.1.0 LANGUAGES C CXX)
+project(work_cyclonedds_demos VERSION 0.1.0 LANGUAGES CXX)
 
-set(CMAKE_C_STANDARD 11)
-set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
 set(CYCLONEDDS_PREBUILT_ROOT
     "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/cyclonedds-0.10.5-prebuilt"
@@ -42,9 +40,27 @@ find_package(CycloneDDS 0.10.5 CONFIG REQUIRED)
 # version is pinned by the prebuilt submodule rather than find_package.
 find_package(CycloneDDS-CXX CONFIG REQUIRED)
 
+# =========================================================
+# IDL 生成环境（所有子模块统一使用）
+# =========================================================
+
+set(PROJECT_IDL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/idl")
+set(PROJECT_IDL_GENERATED_DIR "${CMAKE_BINARY_DIR}/src/idl")
+set(PROJECT_IDL_LIBRARY_OUTPUT_DIR "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+
+set(PROJECT_IDLC "${CYCLONEDDS_C_PREFIX}/bin/idlc")
+set(PROJECT_IDLC_LIBRARY_PATH
+    "${CYCLONEDDS_C_PREFIX}/lib:${CYCLONEDDS_CXX_PREFIX}/lib:$ENV{LD_LIBRARY_PATH}")
+
+file(MAKE_DIRECTORY
+  "${PROJECT_IDL_DIR}"
+  "${PROJECT_IDL_GENERATED_DIR}"
+  "${PROJECT_IDL_LIBRARY_OUTPUT_DIR}")
+
 # Make build-tree executables runnable without installing the demos.
 set(CMAKE_BUILD_RPATH
   "${CYCLONEDDS_C_PREFIX}/lib"
   "${CYCLONEDDS_CXX_PREFIX}/lib")
 
+add_subdirectory(src/idl)
 add_subdirectory(samples)

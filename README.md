@@ -1,19 +1,23 @@
 # work-cyclonedds
 
-CycloneDDS C/C++ interoperability demos. The CycloneDDS 0.10.5 development
-package is managed as a Git submodule and is not rebuilt by this project.
+CycloneDDS C++ demos. The CycloneDDS 0.10.5 development package is managed as
+a Git submodule and is not rebuilt by this project.
 
 The repository keeps reusable dependencies in `thirdparty/` and all runnable
 examples in `samples/`:
 
 ```text
 .
+├── idl/
+│   └── DemoMessage.idl
+├── src/
+│   └── idl/
+│       └── CMakeLists.txt
 ├── samples/
 │   └── hello_world/
 │       ├── CMakeLists.txt
-│       ├── idl/
-│       ├── c/
-│       └── cpp/
+│       ├── publisher.cpp
+│       └── subscriber.cpp
 └── thirdparty/
     └── cyclonedds-0.10.5-prebuilt/
 ```
@@ -44,7 +48,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build --parallel
 ```
 
-CMake locates both CycloneDDS C and C++ packages directly inside:
+CMake locates the CycloneDDS dependencies directly inside:
 
 ```text
 thirdparty/cyclonedds-0.10.5-prebuilt/
@@ -57,29 +61,19 @@ thirdparty/cyclonedds-0.10.5-prebuilt/
 Each program sends or receives five samples by default. Pass a positive integer
 to select a different count.
 
-Run a C publisher with a C++ subscriber:
+Run the C++ publisher and subscriber:
 
 ```bash
 # Terminal 1
 ./build/bin/dds_cpp_subscriber 5
 
 # Terminal 2
-./build/bin/dds_c_publisher 5
-```
-
-Run a C++ publisher with a C subscriber:
-
-```bash
-# Terminal 1
-./build/bin/dds_c_subscriber 5
-
-# Terminal 2
 ./build/bin/dds_cpp_publisher 5
 ```
 
-The four executables share `samples/hello_world/idl/DemoMessage.idl`, topic
-`Demo_Message`, and the default DDS domain. This lets all publisher/subscriber
-combinations communicate.
+The IDL source is stored in `idl/`. Generated C++ sources and headers are kept
+in `build/src/idl/`, and the reusable shared library is written to
+`build/lib/libdds_idl.so`. Other in-tree targets only need to link `dds_idl`.
 
 Runtime network selection and library paths can be supplied later by the
 project's unified startup script through `CYCLONEDDS_URI` and
