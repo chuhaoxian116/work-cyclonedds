@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain Id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface
+          name="enp0s31f6"
+          autodetermine="false"
+          presence_required="true"
+          priority="default"
+          multicast="default"/>
+      </Interfaces>
+
+      <Transport>udp</Transport>
+      <AllowMulticast>default</AllowMulticast>
+    </General>
+
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <EnableTopicDiscoveryEndpoints>true</EnableTopicDiscoveryEndpoints>
+    </Discovery>
+
+    <Tracing>
+      <Verbosity>warning</Verbosity>
+      <OutputFile>stderr</OutputFile>
+    </Tracing>
+  </Domain>
+</CycloneDDS>

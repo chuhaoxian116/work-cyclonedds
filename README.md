@@ -9,7 +9,7 @@ examples in `samples/`:
 ```text
 .
 ├── idl/
-│   └── DemoMessage.idl
+│   └── DemoMessage_.idl
 ├── src/
 │   └── idl/
 │       └── CMakeLists.txt
@@ -74,6 +74,20 @@ Run the C++ publisher and subscriber:
 The IDL source is stored in `idl/`. Generated C++ sources and headers are kept
 in `build/src/idl/`, and the reusable shared library is written to
 `build/lib/libdds_idl.so`. Other in-tree targets only need to link `dds_idl`.
+
+The demo follows the ROS 2 DDS wire naming convention:
+
+```text
+ROS package/type : myproject/msg/DemoMessage
+ROS topic        : /demo_message
+DDS type         : myproject::msg::dds_::DemoMessage_
+DDS topic        : rt/demo_message
+QoS              : Reliable, Volatile, KeepLast(10)
+```
+
+The ROS 2 interface must use the same package, message name, field order and
+field types. Changing any wire-level name or using incompatible QoS prevents
+endpoint matching.
 
 Runtime network selection and library paths can be supplied later by the
 project's unified startup script through `CYCLONEDDS_URI` and

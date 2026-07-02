@@ -1,9 +1,0 @@
-module Demo
-{
-  struct Message
-  {
-    @key
-    long id;
-    string text;
-  };
-};

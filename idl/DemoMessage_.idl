@@ -1,0 +1,25 @@
+// ROS 2 DDS wire type for: myproject/msg/DemoMessage
+// ROS 2 topic /demo_message maps to DDS topic rt/demo_message.
+
+#ifndef __myproject__msg__demo_message__dds_idl__
+#define __myproject__msg__demo_message__dds_idl__
+
+module myproject {
+
+module msg {
+
+module dds_ {
+
+@final
+struct DemoMessage_ {
+  long id_;
+  string text_;
+};
+
+};  // module dds_
+
+};  // module msg
+
+};  // module myproject
+
+#endif  // __myproject__msg__demo_message__dds_idl__
