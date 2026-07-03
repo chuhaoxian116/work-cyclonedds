@@ -65,8 +65,6 @@ int main(int argc, char **argv)
     auto first_receive = std::chrono::steady_clock::time_point();
     auto previous_receive = std::chrono::steady_clock::time_point();
     auto stop = std::chrono::steady_clock::time_point::max();
-    auto next_report = std::chrono::steady_clock::time_point::max();
-    arm_state_demo::MicrosecondStatistics interval_window;
     arm_state_demo::MicrosecondStatistics interval_total;
     arm_state_demo::MicrosecondStatistics jitter_total;
 
@@ -99,7 +97,6 @@ int main(int argc, char **argv)
           first_receive = receive_time;
           previous_receive = receive_time;
           stop = first_receive + duration;
-          next_report = first_receive + std::chrono::seconds(1);
           ++received;
           std::cout << "[subscriber] first_sample"
                     << " session=" << active_session
@@ -141,32 +138,13 @@ int main(int argc, char **argv)
         // 使用绝对偏差表示抖动：|实际接收间隔 - 期望周期|。
         const double jitter_us =
             std::abs(interval_us - static_cast<double>(options.period_us));
-        interval_window.record(interval_us);
         interval_total.record(interval_us);
         jitter_total.record(jitter_us);
         ++received;
-
-        if (receive_time >= next_report) {
-          // 只按秒输出聚合统计，不在接收热路径逐帧打印。
-          arm_state_demo::print_statistics(
-              std::cout,
-              "subscriber interval",
-              std::chrono::duration<double>(
-                  receive_time - first_receive).count(),
-              interval_window);
-          std::cout << "[subscriber] received=" << received
-                    << " sequence_gaps=" << sequence_gaps
-                    << " duplicates=" << duplicates
-                    << " out_of_order=" << out_of_order
-                    << std::endl;
-          interval_window.clear();
-          do {
-            next_report += std::chrono::seconds(1);
-          } while (next_report <= receive_time);
-        }
       }
     }
 
+    // 所有百分位排序和日志输出均在接收循环结束后执行。
     // Deadline Miss、Sample Lost 和 Sample Rejected 是 DDS 层状态；
     // sequence_gaps 等是应用层统计，两类数据需要结合判断。
     const auto deadline_status = reader.requested_deadline_missed_status();

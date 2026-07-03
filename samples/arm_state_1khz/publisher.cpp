@@ -76,8 +76,8 @@ int main(int argc, char **argv)
     std::uint64_t scheduled_cycles = 0;
     std::uint64_t samples_written = 0;
     std::uint64_t skipped_cycles = 0;
-    // interval_window 用于每秒输出；interval_total 和 lateness_total 用于最终汇总。
-    arm_state_demo::MicrosecondStatistics interval_window;
+    // 运行期间只采集数据，不做排序和周期日志输出。
+    // interval_total 和 lateness_total 在发送循环结束后统一汇总。
     arm_state_demo::MicrosecondStatistics interval_total;
     arm_state_demo::MicrosecondStatistics lateness_total;
 
@@ -86,7 +86,6 @@ int main(int argc, char **argv)
     const auto stop = start + duration;
     auto next_release = start;
     auto previous_write = start;
-    auto next_report = start + std::chrono::seconds(1);
 
     while (next_release < stop) {
       // 使用绝对释放时刻，而不是 sleep_for(1ms)。
@@ -130,31 +129,11 @@ int main(int argc, char **argv)
       writer.write(message);
       ++samples_written;
 
-      interval_window.record(interval_us);
       interval_total.record(interval_us);
       lateness_total.record(std::max(0.0, lateness_us));
-
-      if (now >= next_report) {
-        // 每秒输出一次统计，避免逐帧打印破坏 1 kHz 实时性。
-        arm_state_demo::print_statistics(
-            std::cout,
-            "publisher interval",
-            std::chrono::duration<double>(now - start).count(),
-            interval_window);
-        std::cout << "[publisher] written=" << samples_written
-                  << " skipped_cycles=" << skipped_cycles
-                  << " matched_readers="
-                  << writer.publication_matched_status().current_count()
-                  << std::endl;
-        interval_window.clear();
-        // 若系统曾长时间停顿，一次推进到未来的下一个报告时刻，
-        // 避免恢复后连续打印多行历史报告。
-        do {
-          next_report += std::chrono::seconds(1);
-        } while (next_report <= now);
-      }
     }
 
+    // 以下排序和日志均在 1 kHz 发送循环结束后执行，不再干扰实时发送。
     // DDS 状态与应用统计一起输出，便于区分调度问题和 DDS 周期违约。
     const auto deadline_status = writer.offered_deadline_missed_status();
     arm_state_demo::print_statistics(

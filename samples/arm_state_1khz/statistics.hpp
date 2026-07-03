@@ -13,8 +13,8 @@
 namespace arm_state_demo {
 
 // 简单的微秒级统计容器。
-// 每秒窗口约保存 1000 个 double；总统计在长时间测试中会持续占用内存。
-// 如果用于数小时生产监控，可替换为固定大小直方图。
+// 测试期间只追加原始数值，所有排序都在实时循环结束后执行。
+// 长时间测试会持续占用内存，生产监控可替换为固定大小直方图。
 class MicrosecondStatistics
 {
 public:
@@ -47,8 +47,8 @@ public:
     return values_.empty() ? 0.0 : max_;
   }
 
-  // 百分位计算使用 nearest-rank 风格：复制并排序当前窗口。
-  // 该函数只在每秒报告和最终汇总时调用，不处于逐帧热路径。
+  // 百分位计算使用 nearest-rank 风格：复制并排序全部样本。
+  // 该函数只在最终汇总时调用，不处于逐帧热路径。
   double percentile(double percentile_value) const
   {
     if (values_.empty()) {
@@ -64,7 +64,7 @@ public:
     return sorted[index];
   }
 
-  // 清空每秒统计窗口；vector 保留容量，减少后续重复分配。
+  // 可用于复用统计对象；vector 保留容量，减少后续重复分配。
   void clear()
   {
     values_.clear();

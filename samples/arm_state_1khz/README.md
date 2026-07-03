@@ -12,6 +12,12 @@ release timing and write count. The subscriber records receive intervals,
 absolute jitter from the configured period, sequence gaps, duplicates,
 out-of-order samples and DDS status counters.
 
+The current single-threaded demo performs no periodic sorting or logging in
+the 1 kHz data path. It collects timing values in memory and prints one final
+summary after the measurement loop exits. A production implementation that
+needs live monitoring should move aggregation and logging to a separate
+non-real-time thread or use a fixed-size histogram.
+
 ## QoS profile
 
 ```text
