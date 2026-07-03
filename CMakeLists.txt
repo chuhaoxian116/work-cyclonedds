@@ -2,6 +2,16 @@ cmake_minimum_required(VERSION 3.16)
 
 project(work_cyclonedds_demos VERSION 0.1.0 LANGUAGES CXX)
 
+# Use an optimized build with debug symbols by default for single-config
+# generators. An explicit -DCMAKE_BUILD_TYPE=... always takes precedence.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE
+      RelWithDebInfo
+      CACHE STRING "Choose the build type." FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+    Debug Release RelWithDebInfo MinSizeRel)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)

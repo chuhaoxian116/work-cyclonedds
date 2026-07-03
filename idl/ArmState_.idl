@@ -1,0 +1,28 @@
+// Fixed-size 1 kHz robot-arm state sample.
+// The CDR payload is 124 bytes; with the 4-byte encapsulation header the
+// serialized sample is 128 bytes when XCDR1 is used.
+
+#ifndef __myproject__msg__arm_state__dds_idl__
+#define __myproject__msg__arm_state__dds_idl__
+
+module myproject {
+
+module msg {
+
+module dds_ {
+
+@final
+struct ArmState_ {
+  unsigned long long session_id_;
+  unsigned long long sequence_;
+  unsigned long long scheduled_time_ns_;
+  octet payload_[100];
+};
+
+};  // module dds_
+
+};  // module msg
+
+};  // module myproject
+
+#endif  // __myproject__msg__arm_state__dds_idl__

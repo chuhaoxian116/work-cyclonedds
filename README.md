@@ -14,10 +14,16 @@ examples in `samples/`:
 │   └── idl/
 │       └── CMakeLists.txt
 ├── samples/
-│   └── hello_world/
+│   ├── hello_world/
 │       ├── CMakeLists.txt
 │       ├── publisher.cpp
 │       └── subscriber.cpp
+│   └── arm_state_1khz/
+│       ├── CMakeLists.txt
+│       ├── publisher.cpp
+│       ├── subscriber.cpp
+│       ├── common.hpp
+│       └── statistics.hpp
 └── thirdparty/
     └── cyclonedds-0.10.5-prebuilt/
 ```
@@ -92,3 +98,6 @@ endpoint matching.
 Runtime network selection and library paths can be supplied later by the
 project's unified startup script through `CYCLONEDDS_URI` and
 `LD_LIBRARY_PATH`.
+
+The one-way 1 kHz latest-state validation demo is documented in
+`samples/arm_state_1khz/README.md`.
