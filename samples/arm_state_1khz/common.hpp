@@ -4,6 +4,7 @@
 #include "dds/dds.hpp"
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -63,6 +64,19 @@ inline Options parse_options(int argc, char **argv)
     throw std::invalid_argument("too many arguments");
   }
   return options;
+}
+
+inline std::size_t expected_sample_count(const Options &options)
+{
+  // 向上取整得到测试期间最多可能产生的周期数，并额外预留一个边界样本。
+  // 使用 64 位整数计算，避免“秒转微秒”时发生 32 位溢出。
+  const std::uint64_t duration_us =
+      static_cast<std::uint64_t>(options.duration_seconds) * 1000000ULL;
+  const std::uint64_t period_us =
+      static_cast<std::uint64_t>(options.period_us);
+  const std::uint64_t cycles =
+      (duration_us + period_us - 1ULL) / period_us;
+  return static_cast<std::size_t>(cycles + 1ULL);
 }
 
 inline std::uint64_t monotonic_time_ns()

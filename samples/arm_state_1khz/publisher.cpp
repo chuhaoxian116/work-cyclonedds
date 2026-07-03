@@ -80,6 +80,12 @@ int main(int argc, char **argv)
     // interval_total 和 lateness_total 在发送循环结束后统一汇总。
     arm_state_demo::MicrosecondStatistics interval_total;
     arm_state_demo::MicrosecondStatistics lateness_total;
+    const std::size_t expected_samples =
+        arm_state_demo::expected_sample_count(options);
+
+    // 预分配发生在计时开始前，不计入测试时间，也不会阻塞 1 kHz 循环。
+    interval_total.reserve(expected_samples);
+    lateness_total.reserve(expected_samples);
 
     // steady_clock 是单调时钟，不受 NTP 或系统时间修改影响。
     const auto start = std::chrono::steady_clock::now();

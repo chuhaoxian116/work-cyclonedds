@@ -67,6 +67,12 @@ int main(int argc, char **argv)
     auto stop = std::chrono::steady_clock::time_point::max();
     arm_state_demo::MicrosecondStatistics interval_total;
     arm_state_demo::MicrosecondStatistics jitter_total;
+    const std::size_t expected_samples =
+        arm_state_demo::expected_sample_count(options);
+
+    // 在收到第一帧之前完成内存分配，避免接收期间因 Vector 扩容停顿。
+    interval_total.reserve(expected_samples);
+    jitter_total.reserve(expected_samples);
 
     while (!started || std::chrono::steady_clock::now() < stop) {
       try {

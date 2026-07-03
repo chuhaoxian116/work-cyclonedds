@@ -18,6 +18,13 @@ namespace arm_state_demo {
 class MicrosecondStatistics
 {
 public:
+  // 在实时循环开始前一次性分配容量，避免 push_back() 在运行期间扩容、
+  // 搬移已有数据并形成毫秒级停顿。
+  void reserve(std::size_t capacity)
+  {
+    values_.reserve(capacity);
+  }
+
   // 记录一个以微秒为单位的样本，并在线更新总和、最小值和最大值。
   void record(double value_us)
   {

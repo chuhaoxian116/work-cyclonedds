@@ -18,6 +18,10 @@ summary after the measurement loop exits. A production implementation that
 needs live monitoring should move aggregation and logging to a separate
 non-real-time thread or use a fixed-size histogram.
 
+Before measurement starts, both processes reserve enough statistics storage
+for the configured duration and period. This prevents `std::vector` growth
+and data relocation from introducing latency spikes in the 1 kHz path.
+
 ## QoS profile
 
 ```text
