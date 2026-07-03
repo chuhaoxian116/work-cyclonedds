@@ -11,9 +11,24 @@
 #include <iostream>
 #include <stdexcept>
 #include <thread>
+#include <vector>
 #include <unistd.h>
 
 namespace {
+
+constexpr std::size_t kMaxRecordedAnomalies = 128;
+
+// 只保存少量异常周期，避免诊断本身在实时循环中动态分配内存。
+struct TimingAnomaly
+{
+  std::uint64_t sequence;
+  std::uint64_t skipped_cycles;
+  double interval_us;
+  double wake_lateness_us;
+  double previous_write_cost_us;
+  double write_cost_us;
+  double statistics_cost_us;
+};
 
 // 每次 Publisher 启动都生成新的会话 ID。
 // 接收端可据此区分“同一进程内的连续序号”和“进程重启后的新序号”。
@@ -77,15 +92,24 @@ int main(int argc, char **argv)
     std::uint64_t samples_written = 0;
     std::uint64_t skipped_cycles = 0;
     // 运行期间只采集数据，不做排序和周期日志输出。
-    // interval_total 和 lateness_total 在发送循环结束后统一汇总。
+    // 各项统计在发送循环结束后统一汇总。
     arm_state_demo::MicrosecondStatistics interval_total;
     arm_state_demo::MicrosecondStatistics lateness_total;
+    arm_state_demo::MicrosecondStatistics write_cost_total;
     const std::size_t expected_samples =
         arm_state_demo::expected_sample_count(options);
 
     // 预分配发生在计时开始前，不计入测试时间，也不会阻塞 1 kHz 循环。
     interval_total.reserve(expected_samples);
     lateness_total.reserve(expected_samples);
+    write_cost_total.reserve(expected_samples);
+
+    std::vector<TimingAnomaly> anomalies;
+    anomalies.reserve(kMaxRecordedAnomalies);
+    std::uint64_t dropped_anomalies = 0;
+    double statistics_cost_sum_us = 0.0;
+    double statistics_cost_max_us = 0.0;
+    double previous_write_cost_us = 0.0;
 
     // steady_clock 是单调时钟，不受 NTP 或系统时间修改影响。
     const auto start = std::chrono::steady_clock::now();
@@ -100,27 +124,34 @@ int main(int argc, char **argv)
       ++scheduled_cycles;
       std::this_thread::sleep_until(next_release);
 
-      auto now = std::chrono::steady_clock::now();
-      if (now >= next_release + period) {
+      // 在修改 next_release 之前保存原始唤醒延迟。
+      // 旧代码在跳周期后才记录延迟，会把完整毫秒周期扣掉，掩盖真实停顿。
+      const auto wake_time = std::chrono::steady_clock::now();
+      const double raw_wake_lateness_us =
+          std::max(
+              0.0,
+              std::chrono::duration<double, std::micro>(
+                  wake_time - next_release).count());
+
+      std::uint64_t skipped_this_cycle = 0;
+      if (wake_time >= next_release + period) {
         // 如果醒来时已经错过一个或多个完整周期，不进行“追赶式连发”。
         // 对机械臂最新状态而言，旧周期已经失效；跳过它们并保留序号缺口，
         // 让 Subscriber 能明确统计发送端错过了多少周期。
-        const auto behind = now - next_release;
+        const auto behind = wake_time - next_release;
         const auto skipped =
             static_cast<std::uint64_t>(behind / period);
+        skipped_this_cycle = skipped;
         skipped_cycles += skipped;
         scheduled_cycles += skipped;
         next_release += period * skipped;
       }
 
-      now = std::chrono::steady_clock::now();
-      // lateness_us：实际执行时刻相对计划释放时刻晚了多久。
-      const double lateness_us =
-          std::chrono::duration<double, std::micro>(now - next_release).count();
+      const auto write_begin = std::chrono::steady_clock::now();
       // interval_us：相邻两次实际 write() 之间的时间差。
       const double interval_us =
-          std::chrono::duration<double, std::micro>(now - previous_write).count();
-      previous_write = now;
+          std::chrono::duration<double, std::micro>(
+              write_begin - previous_write).count();
 
       // sequence 使用理论周期号；跳过周期后会产生序号缺口。
       message.sequence_(scheduled_cycles);
@@ -133,10 +164,47 @@ int main(int argc, char **argv)
                   next_release.time_since_epoch()).count()));
       // BestEffort 写入不会等待远端应用确认。
       writer.write(message);
+      const auto write_end = std::chrono::steady_clock::now();
+      const double write_cost_us =
+          std::chrono::duration<double, std::micro>(
+              write_end - write_begin).count();
       ++samples_written;
 
+      const auto statistics_begin = std::chrono::steady_clock::now();
       interval_total.record(interval_us);
-      lateness_total.record(std::max(0.0, lateness_us));
+      lateness_total.record(raw_wake_lateness_us);
+      write_cost_total.record(write_cost_us);
+      const auto statistics_end = std::chrono::steady_clock::now();
+      const double statistics_cost_us =
+          std::chrono::duration<double, std::micro>(
+              statistics_end - statistics_begin).count();
+      statistics_cost_sum_us += statistics_cost_us;
+      statistics_cost_max_us =
+          std::max(statistics_cost_max_us, statistics_cost_us);
+
+      // 仅保存可能导致周期违约的事件；容量在启动前固定，不允许扩容。
+      const bool is_anomaly =
+          skipped_this_cycle > 0 ||
+          interval_us >= static_cast<double>(options.deadline_ms) * 1000.0 ||
+          write_cost_us >= 500.0 ||
+          statistics_cost_us >= 500.0;
+      if (is_anomaly) {
+        if (anomalies.size() < kMaxRecordedAnomalies) {
+          anomalies.push_back(TimingAnomaly{
+              scheduled_cycles,
+              skipped_this_cycle,
+              interval_us,
+              raw_wake_lateness_us,
+              previous_write_cost_us,
+              write_cost_us,
+              statistics_cost_us});
+        } else {
+          ++dropped_anomalies;
+        }
+      }
+
+      previous_write = write_begin;
+      previous_write_cost_us = write_cost_us;
     }
 
     // 以下排序和日志均在 1 kHz 发送循环结束后执行，不再干扰实时发送。
@@ -148,16 +216,40 @@ int main(int argc, char **argv)
             std::chrono::steady_clock::now() - start).count(),
         interval_total);
     arm_state_demo::print_statistics(
-        std::cout, "publisher schedule lateness total",
+        std::cout, "publisher raw wake lateness total",
         std::chrono::duration<double>(
             std::chrono::steady_clock::now() - start).count(),
         lateness_total);
+    arm_state_demo::print_statistics(
+        std::cout, "publisher write cost total",
+        std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - start).count(),
+        write_cost_total);
     std::cout << "[publisher summary]"
               << " scheduled_cycles=" << scheduled_cycles
               << " written=" << samples_written
               << " skipped_cycles=" << skipped_cycles
               << " offered_deadline_missed=" << deadline_status.total_count()
+              << " statistics_cost_mean="
+              << (statistics_cost_sum_us /
+                  static_cast<double>(samples_written))
+              << "us"
+              << " statistics_cost_max=" << statistics_cost_max_us << "us"
+              << " anomalies=" << anomalies.size()
+              << " dropped_anomalies=" << dropped_anomalies
               << std::endl;
+
+    for (const auto &anomaly : anomalies) {
+      std::cout << "[publisher anomaly]"
+                << " sequence=" << anomaly.sequence
+                << " skipped=" << anomaly.skipped_cycles
+                << " interval=" << anomaly.interval_us << "us"
+                << " wake_lateness=" << anomaly.wake_lateness_us << "us"
+                << " previous_write=" << anomaly.previous_write_cost_us << "us"
+                << " write=" << anomaly.write_cost_us << "us"
+                << " statistics=" << anomaly.statistics_cost_us << "us"
+                << std::endl;
+    }
   } catch (const dds::core::Exception &error) {
     std::cerr << "[publisher] DDS error: " << error.what() << std::endl;
     return EXIT_FAILURE;

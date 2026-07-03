@@ -22,6 +22,13 @@ Before measurement starts, both processes reserve enough statistics storage
 for the configured duration and period. This prevents `std::vector` growth
 and data relocation from introducing latency spikes in the 1 kHz path.
 
+The publisher also records raw wake-up lateness, `DataWriter::write()` cost
+and statistics-recording cost separately. Both processes keep a fixed,
+preallocated list of exceptional cycles and print it only after measurement
+ends. This makes it possible to determine whether a long interval originated
+in scheduler wake-up, DDS writing, statistics collection or receive-side
+processing without adding live logging to the real-time path.
+
 ## QoS profile
 
 ```text

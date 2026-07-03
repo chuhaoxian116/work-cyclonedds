@@ -10,6 +10,22 @@
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
+#include <vector>
+
+namespace {
+
+constexpr std::size_t kMaxRecordedAnomalies = 128;
+constexpr std::int64_t kMaximumWaitMicroseconds = 100000;
+
+struct ReceiveAnomaly
+{
+  std::uint64_t sequence;
+  std::uint64_t sequence_gap;
+  double interval_us;
+  double take_cost_us;
+};
+
+}  // namespace
 
 int main(int argc, char **argv)
 {
@@ -74,18 +90,49 @@ int main(int argc, char **argv)
     interval_total.reserve(expected_samples);
     jitter_total.reserve(expected_samples);
 
-    while (!started || std::chrono::steady_clock::now() < stop) {
+    std::vector<ReceiveAnomaly> anomalies;
+    anomalies.reserve(kMaxRecordedAnomalies);
+    std::uint64_t dropped_anomalies = 0;
+    double take_cost_sum_us = 0.0;
+    double take_cost_max_us = 0.0;
+    std::uint64_t take_calls = 0;
+
+    while (true) {
+      const auto before_wait = std::chrono::steady_clock::now();
+      if (started && before_wait >= stop) {
+        break;
+      }
+
+      // 首帧前最多等待 100 ms；开始测量后，最后一次等待不会超过剩余时间。
+      std::int64_t wait_microseconds = kMaximumWaitMicroseconds;
+      if (started) {
+        const auto remaining =
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                stop - before_wait).count();
+        wait_microseconds =
+            std::max<std::int64_t>(
+                1, std::min(kMaximumWaitMicroseconds, remaining));
+      }
+
       try {
-        // 100 ms 只是 WaitSet 的检查超时，用来让循环重新检查结束条件；
-        // 数据到达时会立即唤醒，不会固定等待 100 ms。
-        waitset.wait(dds::core::Duration::from_millisecs(100));
+        waitset.wait(
+            dds::core::Duration::from_microsecs(wait_microseconds));
       } catch (const dds::core::TimeoutError &) {
         continue;
       }
 
       // take() 取出并移除当前 Reader 缓存中的所有可用样本。
       // KeepLast(1) 下通常只有最新一帧。
+      const auto take_begin = std::chrono::steady_clock::now();
       const auto samples = reader.take();
+      const auto take_end = std::chrono::steady_clock::now();
+      const double take_cost_us =
+          std::chrono::duration<double, std::micro>(
+              take_end - take_begin).count();
+      take_cost_sum_us += take_cost_us;
+      take_cost_max_us = std::max(take_cost_max_us, take_cost_us);
+      ++take_calls;
+
       for (const auto &sample : samples) {
         if (!sample.info().valid()) {
           continue;
@@ -122,6 +169,8 @@ int main(int argc, char **argv)
           continue;
         }
 
+        std::uint64_t gap_this_sample = 0;
+
         // 对同一会话进行序号连续性检查。
         if (message.sequence_() == last_sequence) {
           ++duplicates;
@@ -131,7 +180,8 @@ int main(int argc, char **argv)
           if (message.sequence_() > last_sequence + 1) {
             // sequence 的缺口既可能来自网络丢包/覆盖，
             // 也可能来自 Publisher 主动跳过已经错失的调度周期。
-            sequence_gaps += message.sequence_() - last_sequence - 1;
+            gap_this_sample = message.sequence_() - last_sequence - 1;
+            sequence_gaps += gap_this_sample;
           }
           last_sequence = message.sequence_();
         }
@@ -147,6 +197,23 @@ int main(int argc, char **argv)
         interval_total.record(interval_us);
         jitter_total.record(jitter_us);
         ++received;
+
+        const bool is_anomaly =
+            gap_this_sample > 0 ||
+            interval_us >=
+                static_cast<double>(options.deadline_ms) * 1000.0 ||
+            take_cost_us >= 500.0;
+        if (is_anomaly) {
+          if (anomalies.size() < kMaxRecordedAnomalies) {
+            anomalies.push_back(ReceiveAnomaly{
+                message.sequence_(),
+                gap_this_sample,
+                interval_us,
+                take_cost_us});
+          } else {
+            ++dropped_anomalies;
+          }
+        }
       }
     }
 
@@ -172,7 +239,22 @@ int main(int argc, char **argv)
               << " requested_deadline_missed=" << deadline_status.total_count()
               << " sample_lost=" << lost_status.total_count()
               << " sample_rejected=" << rejected_status.total_count()
+              << " take_cost_mean="
+              << (take_cost_sum_us / static_cast<double>(take_calls))
+              << "us"
+              << " take_cost_max=" << take_cost_max_us << "us"
+              << " anomalies=" << anomalies.size()
+              << " dropped_anomalies=" << dropped_anomalies
               << std::endl;
+
+    for (const auto &anomaly : anomalies) {
+      std::cout << "[subscriber anomaly]"
+                << " sequence=" << anomaly.sequence
+                << " sequence_gap=" << anomaly.sequence_gap
+                << " interval=" << anomaly.interval_us << "us"
+                << " take=" << anomaly.take_cost_us << "us"
+                << std::endl;
+    }
   } catch (const dds::core::Exception &error) {
     std::cerr << "[subscriber] DDS error: " << error.what() << std::endl;
     return EXIT_FAILURE;
