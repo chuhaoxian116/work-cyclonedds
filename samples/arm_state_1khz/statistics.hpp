@@ -12,9 +12,13 @@
 
 namespace arm_state_demo {
 
+// 简单的微秒级统计容器。
+// 每秒窗口约保存 1000 个 double；总统计在长时间测试中会持续占用内存。
+// 如果用于数小时生产监控，可替换为固定大小直方图。
 class MicrosecondStatistics
 {
 public:
+  // 记录一个以微秒为单位的样本，并在线更新总和、最小值和最大值。
   void record(double value_us)
   {
     values_.push_back(value_us);
@@ -43,6 +47,8 @@ public:
     return values_.empty() ? 0.0 : max_;
   }
 
+  // 百分位计算使用 nearest-rank 风格：复制并排序当前窗口。
+  // 该函数只在每秒报告和最终汇总时调用，不处于逐帧热路径。
   double percentile(double percentile_value) const
   {
     if (values_.empty()) {
@@ -58,6 +64,7 @@ public:
     return sorted[index];
   }
 
+  // 清空每秒统计窗口；vector 保留容量，减少后续重复分配。
   void clear()
   {
     values_.clear();
@@ -79,6 +86,7 @@ inline void print_statistics(
     double elapsed_seconds,
     const MicrosecondStatistics &statistics)
 {
+  // 输出格式保持固定，便于后续脚本直接解析 mean/P50/P90/P99/max。
   output << std::fixed << std::setprecision(3)
          << "[" << label << "] elapsed=" << elapsed_seconds << "s"
          << " count=" << statistics.count()
